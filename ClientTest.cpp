@@ -24,7 +24,8 @@ using namespace std;
 double rubles = 0;
 double dollars = 0;
 double euros = 0;
-bool auction = false;
+int goods = 0;
+int sockfd;
 
 int create_socket()
 {
@@ -70,7 +71,7 @@ void* money_increase(void*)
     const double rubDelta = 1;
     const double dolDelta = 0.1;
     const double euroDelta = 0.01;
-    while (!auction)
+    while (true)
     {
         rubles += rubDelta;
         dollars += dolDelta;
@@ -82,28 +83,39 @@ void* money_increase(void*)
 
 void* auction_handle(void* arg)
 {
-    int fd = *(int*)arg;
+    MainWindow* window = (MainWindow*)arg;
+    int fd = sockfd;
     while (true)
     {
         char buf[128];
         if (recv(fd, buf, 127, 0) > 0)
         {
-            if (buf == "Auction started")
+            if (strcmp(buf, "Auction started") == 0)
             {
-                recv(fd, buf, 127, 0);
-                int decision_time = atoi(buf);
-                int given_price = 100;
-                send(fd, "R100", 127, 0);
-                
-                sleep(decision_time);
+                memset(buf, 0, 127); // сброс буфера
+                recv(fd, buf, 127, 0); // получаем время на решение
+                int decision_time = atoi(buf); // переводим в инт
+                string result;
+                double given_price;
+                window->start_auction(decision_time, result, given_price); // вызываем функцию окна которая получает введённые данные и возвращает результаты
+                //sleep(decision_time + 1); // ждём время на размышление чтобы предыдущая ф-ция закончилась
+                memset(buf, 0, 127); // сбрасываем буфер
+                strcpy(buf, result.c_str()); // записываем результирующую строку в буфер
+                send(fd, buf, 127, 0); // отправляем результат (валюта и цена или пасс)
+                memset(buf, 0, 127); // сбрасываем буфер
+                recv(fd, buf, 127, 0); // получаем результат аукциона
 
-                recv(fd, buf, 127, 0);
-                if (buf[0] == 'T')
+                if (buf[0] == 'T') // если мы выиграли
                 {
-                    rubles -= given_price;
+                    goods++;
+                    if (result[0] == 'R') rubles -= given_price; // определяем валюту из строки и уменьшаем нужную валюту
+                    else if (result[0] == 'U') dollars -= given_price;
+                    else if (result[0] == 'E') euros -= given_price;
                 }
-                buf[0] = ' ';
-                printf("%s", buf);
+                buf[0] = ' '; // Убираем T/F из строки
+                window->update_goods_label();
+                window->update_money_label();
+                window->print_warning_message(buf); // выписываем результирующее сообщение в окно
             }
         }
         
@@ -112,7 +124,6 @@ void* auction_handle(void* arg)
 
 int main(int argc, char *argv[])
 {
-
     QApplication a(argc, argv);
 
     QTranslator translator;
@@ -127,14 +138,15 @@ int main(int argc, char *argv[])
     MainWindow w;
     w.show();
 
-    int sockfd, portno = 2000;
+    int portno = 2080;
     hostent *server;
     sockfd = create_socket();
     server = get_host_by_hostname();
     server_connect(portno, sockfd, server);
 
-    pthread_t thread;
+    pthread_t thread, auction_thr;
     pthread_create(&thread, 0, money_increase, 0);
+    pthread_create(&auction_thr, NULL, auction_handle, (void**)&w);
 
     return a.exec();
 }

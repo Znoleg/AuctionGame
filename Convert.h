@@ -4,17 +4,18 @@
 extern double rubles;
 extern double dollars;
 extern double euros;
+extern int goods;
 
-void error(std::string msg);
+extern void error(std::string msg);
 
-double RubToUsd(double rub);
+extern double RubToUsd(double rub);
 
-double RubToEur(double rub);
+extern double RubToEur(double rub);
 
-double UsdToRub(double usd);
+extern double UsdToRub(double usd);
 
-double UsdToEur(double usd);
+extern double UsdToEur(double usd);
 
-double EurToRub(double eur);
+extern double EurToRub(double eur);
 
-double EurToUsd(double eur);
+extern double EurToUsd(double eur);

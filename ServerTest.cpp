@@ -12,13 +12,12 @@
 #include <pthread.h>
 #include <vector>
 #include <string>
-#include "Convert.h"
+#include "time.h"
+#include "Convert.cpp"
 
-#define MIN_USERS 2
+#define MIN_USERS 1
 using namespace std;
 std::vector<int> connected_clients;
-
-
 
 void* new_thread(void* clientid)
 {
@@ -57,61 +56,70 @@ void start_listening(int sockfd)
 
 void* auction_thread(void*)
 {
-    int auctionDelay = rand() % 100 + 20; // время до старта аукциона
-    int clientDecisionTime = rand() % 30 + 5; // время на решение пользователя
-    int productPrice = rand() % 1000 + 500; // всегда в рублях
-
-    sleep(auctionDelay);
-    for (int clientId : connected_clients) // оповещение всех подключённых пользователей
+    while (true)
     {
-        send(clientId, "Auction started", 127, NULL);  // оповещение об аукционе
-        send(clientId, to_string(clientDecisionTime).c_str(), 127, NULL); // время на решение
-    }
+        int auctionDelay = 10; // время до старта аукциона
+        int clientDecisionTime = rand() % 30 + 5; // время на решение пользователя
+        //int productPrice = rand() % 1000 + 500; // всегда в рублях
 
-    int bestPrice = -1;
-    int bestPriceId = -1;
-    for (int clientId : connected_clients)
-    {
-        char buf[128];
-        recv(clientId, &buf, 127, NULL); // получаем решение пользователя
-        if (buf != "pas") // если не пас
+        printf("Auction will start in %i seconds\n", auctionDelay);
+        sleep(auctionDelay);
+        for (int clientId : connected_clients) // оповещение всех подключённых пользователей
         {
-            int price = atoi(buf + 1); // получаем валюту+цену
-            if (buf[0] == 'R') // рубль
-            {
+            send(clientId, "Auction started", 127, 0);  // оповещение об аукционе
+            send(clientId, to_string(clientDecisionTime).c_str(), 127, 0); // время на решение
+        }
+        printf("Auction started: %i for users decision", clientDecisionTime);
+        sleep(clientDecisionTime + 1); // ждём окончания аукциона
 
-            }
-            else if (buf[0] == 'U') // доллар
+        int bestPrice = -1;
+        int bestPriceId = -1;
+        for (int clientId : connected_clients)
+        {
+            char buf[128];
+            recv(clientId, &buf, 127, 0); // получаем решение пользователя
+            printf("%i client decision: %s", clientId, buf);
+            if (strcmp(buf, "pas") != 0) // если не пас
             {
-                price = UsdToRub(price);
-            }
-            else if (buf[0] == 'E') // евро
-            {
-                price = EurToRub(price);
-            }
+                int price = atoi(buf + 1); // получаем валюту+цену
+                if (buf[0] == 'R') // рубль
+                {
 
-            if (price > bestPrice) // если цена пользователя больше предыдущей лучшей
-            {
-                bestPrice = price;
-                bestPriceId = clientId;
+                }
+                else if (buf[0] == 'U') // доллар
+                {
+                    price = UsdToRub(price);
+                }
+                else if (buf[0] == 'E') // евро
+                {
+                    price = EurToRub(price);
+                }
+
+                if (price > bestPrice) // если цена пользователя больше предыдущей лучшей
+                {
+                    bestPrice = price;
+                    bestPriceId = clientId;
+                }
             }
         }
-    }
-    for (int clientId : connected_clients)
-    {
-        char message[128];
-        if (clientId != bestPriceId) sprintf(message, "FYou didn't bought product :("); // не купил
-        else sprintf(message, "Tyou bought product for %i rubles!", bestPrice); // купил
-        send(clientId, message, 127, NULL);
+        for (int clientId : connected_clients)
+        {
+            char message[128];
+            if (clientId != bestPriceId) sprintf(message, "FYou didn't bought goods :("); // не купил
+            else sprintf(message, "TYou bought goods for %i rubles!", bestPrice); // купил
+            printf("%i client will get the information: %s", clientId, message);
+            send(clientId, message, 127, 0); // отправляем результат
+        }
     }
 }
 
 int main(int argc, char* argv[])
 {
-    in_port_t portno = 80;
-    int sockfd, newclient, n;
+    srand(time(NULL));
+    in_port_t portno = 2080;
+    int sockfd, newclient;
     socklen_t clilen;
-    sockaddr_in serv_addr, cli_addr;
+    sockaddr_in cli_addr;
     if (argc == 2)
     {
         portno = atoi(argv[1]);
@@ -123,17 +131,23 @@ int main(int argc, char* argv[])
     clilen = sizeof(cli_addr);
 
     printf("Server started\n");
-    printf("Waiting for %i users to connect", MIN_USERS);
+    printf("Waiting for %i users to connect\n", MIN_USERS);
     int clientNum = 0;
+    pthread_t auction_thread_id;
     while (true)
     {
         newclient = accept(sockfd, (sockaddr*)&cli_addr, &clilen);
         if (newclient < 0) error("Error on accept\n");
         connected_clients.push_back(newclient);
-        if (MIN_USERS - clientNum != 0)
-        {
-            printf("Waiting for %i users to connect", MIN_USERS - clientNum);
-        }
         clientNum++;
+        if (MIN_USERS - clientNum > 0)
+        {
+            printf("Waiting for %i users to connect\n", MIN_USERS - clientNum);
+        }
+        else
+        {
+            printf("Minimal %i users connected! Starting a game.\n", MIN_USERS);
+            pthread_create(&auction_thread_id, NULL, auction_thread, NULL);
+        }
     }
 }
