@@ -34,18 +34,7 @@ int create_socket()
     return sockfd;
 }
 
-hostent* get_host_by_hostname(string name = "")
-{
-    if (name == "")
-    {
-        char buff[64];
-        gethostname(buff, 63);
-        return gethostbyname(buff);
-    }
-    else return gethostbyname(name.c_str());
-}
-
-hostent* get_host_by_ip(string ipstr = "127.0.0.1")
+hostent* get_host_by_ip()
 {
     in_addr ip;
     hostent *hp;
@@ -66,6 +55,7 @@ sockaddr_in server_connect(in_port_t port, int sockfd, hostent* server)
     return serv_addr;
 }
 
+// Поток увеличения денег игрока. Через секунду прибавляем каждой валюты.
 void* money_increase(void*)
 {
     const double rubDelta = 1;
@@ -80,23 +70,23 @@ void* money_increase(void*)
     }
 }
 
-
+// Поток игры
 void* auction_handle(void* arg)
 {
-    MainWindow* window = (MainWindow*)arg;
-    int fd = sockfd;
-    while (true)
+    MainWindow* window = (MainWindow*)arg; // Переводим аргумент типа void* в QT окно MainWindow
+    int fd = sockfd; // сокет сервера
+    while (true) // Бесконечный цикл
     {
-        char buf[128];
+        char buf[128]; // Буфер сообщений
         if (recv(fd, buf, 127, 0) > 0)
         {
-            if (strcmp(buf, "Auction started") == 0)
+            if (strcmp(buf, "Auction started") == 0) // Если получили сообщение о старту акциона
             {
                 memset(buf, 0, 127); // сброс буфера
                 recv(fd, buf, 127, 0); // получаем время на решение
                 int decision_time = atoi(buf); // переводим в инт
                 string result;
-                double given_price;
+                double given_price; // переменна для отображения цены
                 window->start_auction(decision_time, result, given_price); // вызываем функцию окна которая получает введённые данные и возвращает результаты
                 //sleep(decision_time + 1); // ждём время на размышление чтобы предыдущая ф-ция закончилась
                 memset(buf, 0, 127); // сбрасываем буфер
@@ -113,8 +103,8 @@ void* auction_handle(void* arg)
                     else if (result[0] == 'E') euros -= given_price;
                 }
                 buf[0] = ' '; // Убираем T/F из строки
-                window->update_goods_label();
-                window->update_money_label();
+                window->update_goods_label(); // Обновляем строку кол-ва товаров в окне
+                window->update_money_label(); // Обновляем строки денег в окне
                 window->print_warning_message(buf); // выписываем результирующее сообщение в окно
             }
         }
@@ -124,6 +114,7 @@ void* auction_handle(void* arg)
 
 int main(int argc, char *argv[])
 {
+    /* Стандартная процедура создания окна QT */
     QApplication a(argc, argv);
 
     QTranslator translator;
@@ -138,15 +129,25 @@ int main(int argc, char *argv[])
     MainWindow w;
     w.show();
 
-    int portno = 2080;
+    /* */
+
+    in_port_t portno = 2400; // стандартный порт
+    string ip = "127.0.0.1"; // стандартный ip
+
+    if (argc >= 3) // если кол-во аргументов 3 и больше
+    {
+        ip = argv[1]; // ip равен аргументу 1
+        portno = atoi(argv[2]); // port равен аргументу 2
+    }
+
     hostent *server;
-    sockfd = create_socket();
-    server = get_host_by_hostname();
-    server_connect(portno, sockfd, server);
+    sockfd = create_socket(); // создаём сокет
+    server = get_host_by_ip(ip); // получаем хостинг по ip
+    server_connect(portno, sockfd, server); // подключаемся к серверу по полученному хостингу
 
     pthread_t thread, auction_thr;
-    pthread_create(&thread, 0, money_increase, 0);
-    pthread_create(&auction_thr, NULL, auction_handle, (void**)&w);
+    pthread_create(&thread, 0, money_increase, 0); // Поток увеличения денег игрока
+    pthread_create(&auction_thr, NULL, auction_handle, (void**)&w); // Поток игры. Передаём QT окно в качестве аргумента
 
-    return a.exec();
+    return a.exec(); // Запускаем QT окно
 }
