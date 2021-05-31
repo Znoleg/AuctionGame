@@ -19,7 +19,6 @@
 #include <QLabel>
 
 using namespace std;
-#define STD_PORT 2048
 
 double rubles = 0;
 double dollars = 0;
