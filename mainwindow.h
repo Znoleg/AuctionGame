@@ -16,10 +16,11 @@ public:
     ~MainWindow();
 
 public slots:
-    void start_auction(int auction_time, std::string& result, double& price);
+    void start_auction(int auction_time, int min_price, std::string& result, double& price, int& money_type);
     void print_warning_message(std::string message);
     void update_money_label();
     void update_goods_label();
+    void TurnMoneyButtons(bool status);
 
 private:
     Ui::MainWindow *ui;

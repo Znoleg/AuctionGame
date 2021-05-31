@@ -8,15 +8,20 @@
 #include <QGridLayout>
 #include <QLCDNumber>
 #include <QComboBox>
+#include <QPushButton>
 
 void enable_auc_form();
 void disable_auc_form();
+
+MainWindow* win;
 
 QLabel* rubLabel;
 QLabel* usdLabel;
 QLabel* eurLabel;
 QLabel* warningLabel;
 QLineEdit* rubConvert, *usdConvert, *eurConvert;
+
+QPushButton* getRubleBtn, *getUsdBtn, *getEurBtn;
 
 QGridLayout* aucForm;
 QLCDNumber* aucTimeLeft;
@@ -32,6 +37,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    win = this;
     /* Здесь получаем все элементы окна с помощью поиска по имени */
     rubLabel = findChild<QLabel*>("RubleValue");
     usdLabel = findChild<QLabel*>("UsdValue");
@@ -53,9 +59,9 @@ MainWindow::MainWindow(QWidget *parent)
     goodsCntLabel = findChild<QLabel*>("GoodsCount");
 
     /* Здесь ставим конпкам функционал */
-    auto getRubleBtn = findChild<QPushButton*>("GetRubleBtn");
-    auto getUsdBtn = findChild<QPushButton*>("GetUsdBtn");
-    auto getEurBtn = findChild<QPushButton*>("GetEurBtn");
+    getRubleBtn = findChild<QPushButton*>("GetRubleBtn");
+    getUsdBtn = findChild<QPushButton*>("GetUsdBtn");
+    getEurBtn = findChild<QPushButton*>("GetEurBtn");
     connect(getRubleBtn, SIGNAL(released()), this, SLOT(get_ruble())); // Например кнопка получить рубиль по нажатию вызовет функцию get_ruble()
     connect(getUsdBtn, SIGNAL(released()), this, SLOT(get_usd()));
     connect(getEurBtn, SIGNAL(released()), this, SLOT(get_eur()));
@@ -84,6 +90,18 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+void MainWindow::TurnMoneyButtons(bool status)
+{
+    getRubleBtn->setVisible(status);
+    getRubleBtn->setEnabled(status);
+
+    getUsdBtn->setVisible(status);
+    getUsdBtn->setVisible(status);
+
+    getEurBtn->setVisible(status);
+    getEurBtn->setEnabled(status);
+}
+
 bool check_rubles(double ruble)
 {
     if (ruble > rubles) return false;
@@ -102,6 +120,8 @@ bool check_eur(double eur)
     else return true;
 }
 
+int min_goods_price = 0;
+int m_type = -1;
 // Поток одного аукциона.
 void* auction_thread(void* arg)
 {
@@ -121,6 +141,7 @@ void* auction_thread(void* arg)
         pthread_exit(result); // выходим из потока
     }
     double betValue = aucBetValue->text().toDouble(); // Если пред. условие не прошло то переводим текст из поля в число Double
+    m_type = aucCurrency->currentIndex();
     switch (aucCurrency->currentIndex()) // Смотрим какая валюта выбрана в поле валюты
     {
         case 0: // Если 0 то рубли
@@ -130,7 +151,8 @@ void* auction_thread(void* arg)
                 strcpy(result, "pas"); // то он пасует
                 pthread_exit(result);
             }
-            intermediate += "R"; break; // Если всё ок то добавляем в промежуточную строку символ R (рубли)
+            break;
+            //intermediate += "R"; break; // Если всё ок то добавляем в промежуточную строку символ R (рубли)
         }
         case 1: // 1 - доллары
         {
@@ -139,7 +161,9 @@ void* auction_thread(void* arg)
                 strcpy(result, "pas");
                 pthread_exit(result);
             }
-            intermediate += "U"; break; // доллары (usd)
+            //intermediate += "U"; break; // доллары (usd)
+            betValue = UsdToRub(betValue); // конвертируем в рубли
+            break;
         }
         case 2: // 2 - евро
         {
@@ -148,28 +172,33 @@ void* auction_thread(void* arg)
                 strcpy(result, "pas");
                 pthread_exit(result);
             }
-            intermediate += "E"; break; // евро (euro)
+            //intermediate += "E"; break; // евро (euro)
+            betValue = EurToRub(betValue);
+            break;
         }
     }
-    intermediate += QString::number(betValue).toStdString(); // добавляем к промежуточному результату число ставки, конвертируя его в строку
+    if (betValue < min_goods_price) intermediate += "pas"; // Если написанная цена меньше минимальной
+    else intermediate += QString::number(betValue).toStdString(); // добавляем к промежуточному результату число ставки, конвертируя его в строку
     strcpy(result, intermediate.c_str()); // копируем промежуточный результат в C строку
     pthread_exit(result); // выходим из поток с полученным результатом
 }
 
 // Функция запуска обработки аукциона.
-void MainWindow::start_auction(int auction_time, std::string& result, double& price) // Вызывается из Client.cpp
+void MainWindow::start_auction(int auction_time, int min_price, std::string& result, double& price, int& money_type) // Вызывается из Client.cpp
 {
+    min_goods_price = min_price;
     enable_auc_form(); // Включаем в окне форму для ставки (поле ставки, выбор валюты и тд)
     pthread_t thread;
     char* res = NULL;
     pthread_create(&thread, 0, auction_thread, (void**)&auction_time); // создаём поток обработки аукциона
     pthread_join(thread, (void**)&res); // присоединяемся к нему
     disable_auc_form(); // По завершению выключаем форму для ставки
+    money_type = m_type; // инициализируем тип валюты переменной m_type (меняется в auction_thread)
     result = std::string(res); // Переводим результат из потока в string
     if (result != "pas") // Если не спасовал то переводим полученное строку, в которой написана ставка в число
     {
-        std::string number_str(result.begin() + 1, result.end()); // Здесь отбрасываем 1 букву строки обазаначающую валюту
-        price = std::stod(number_str); // и число равно оставшейся строке
+        //std::string number_str(result.begin() + 1, result.end()); // Здесь отбрасываем 1 букву строки обазаначающую валюту
+        price = std::stod(result); // и число равно оставшейся строке
     }
 }
 
@@ -297,13 +326,7 @@ void MainWindow::update_money_label()
     eurLabel->setText(QString::number(euros));
 }
 
-// Обновляет в окне строку количества товара
-void MainWindow::update_goods_label()
-{
-    goodsCntLabel->setText(QString::number(goods));
-}
-
-// Поток обновления валют. Работает всегда. Таким образом Client.cpp обновляет валюты в своём файле а QT их тут прописывает.
+// Поток обновления валют. Работает всегда.
 void* update_money_label_thr(void* arg)
 {
     MainWindow* window = (MainWindow*)arg;
@@ -319,6 +342,12 @@ void MainWindow::start_update_money_label_thr()
 {
     pthread_t thread;
     pthread_create(&thread, 0, update_money_label_thr, this);
+}
+
+// Обновляет в окне строку количества товара
+void MainWindow::update_goods_label()
+{
+    goodsCntLabel->setText(QString::number(goods));
 }
 
 // Выключает форму ставки

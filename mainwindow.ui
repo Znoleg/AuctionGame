@@ -320,9 +320,9 @@
    <widget class="QLabel" name="WarningLabel">
     <property name="geometry">
      <rect>
-      <x>200</x>
+      <x>40</x>
       <y>340</y>
-      <width>341</width>
+      <width>721</width>
       <height>20</height>
      </rect>
     </property>
@@ -394,7 +394,7 @@
    <widget class="QWidget" name="horizontalLayoutWidget_2">
     <property name="geometry">
      <rect>
-      <x>160</x>
+      <x>190</x>
       <y>0</y>
       <width>461</width>
       <height>51</height>
